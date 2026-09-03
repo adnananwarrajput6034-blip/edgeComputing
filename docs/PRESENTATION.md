@@ -631,11 +631,15 @@ PY
 Produces:
 
 ```
-Strategy            Uploaded    Edge CPU  What crossed the network
-A_centralized        2726 KB       0.0 s  raw audio
-B_hybrid             1737 KB       5.1 s  mel-spectrograms
-C_federated          1215 KB      27.4 s  model weights only
+Strategy           Uploaded  Edge CPU  Final acc  What crossed the network
+----------------------------------------------------------------------------
+A_centralized       1305 KB     0.0 s      0.531  raw audio
+B_hybrid             956 KB     1.1 s      0.531  mel-spectrograms
+C_federated         1216 KB    52.6 s      0.562  model weights only
 ```
+
+Those are the numbers from a full rehearsal on 96 enrolled training samples
+(`car` / `cell phone` / `person`, 32 held out). Chance is 0.333.
 
 **Hand the examiner this table.** It is the thesis in six numbers: cost
 moves from the network to the edge device as privacy improves.
@@ -737,8 +741,14 @@ ipconfig getifaddr en0                                    # the IP the Pi needs
 | Laptop | TensorFlow 2.21.0, mosquitto 2.1.2 |
 | Network | Pi and laptop on one LAN; broker on `<LAPTOP_IP>:1883` |
 
-> The byte counts and accuracies quoted above come from a plumbing
-> verification run using two synthetic tone classes. **The structure and
-> the byte counts will hold; the accuracies will not** — real enrolled
-> classes are harder than synthetic tones, and a 1.000 is an artefact of
-> that smoke test. Run a full rehearsal to get numbers you can quote.
+> Every number in this runbook comes from a full end-to-end rehearsal on
+> the real Pi with 128 live-enrolled samples across `car`, `cell phone`
+> and `person` — not from a simulation. Your own demo-day figures will
+> differ with the classes you enroll and how acoustically distinct they
+> are, but the shape holds: B uploads least, C uploads a fixed amount per
+> round regardless of data volume, and edge CPU rises as privacy improves.
+>
+> Accuracy landed at 0.53-0.56 against 0.333 chance. That is a real result
+> from ~96 training samples, and honest to present as such: the point of
+> the live track is that the pipeline works on hardware, not that three
+> minutes of enrollment rivals a 68.6% model trained on 8000 clips.
