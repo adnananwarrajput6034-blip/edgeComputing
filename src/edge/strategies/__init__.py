@@ -25,26 +25,26 @@ Strategy C (Federated):
     - Privacy: HIGH (data never leaves device)
     - Bandwidth: LOW (~1.5 MB raw / ~400 KB quantized per round)
 
-All strategies implement the ILearningStrategy interface.
+Strategies A and B use these ILearningStrategy classes on the edge.
+Strategy C (federated) does not: its client trains the AudioCNN directly
+with model.fit and ships weights — see src/experiments/strategy_c_client.py
+and src/server/aggregation/fedavg.py.
 
 Classes:
     ILearningStrategy: Abstract interface for strategies
     CentralizedStrategy: Strategy A implementation
     HybridStrategy: Strategy B implementation
-    FederatedStrategy: Strategy C implementation
-    StrategyFactory: Factory to create strategies
+    StrategyFactory: Factory to create A/B strategies
 """
 
 from .base import ILearningStrategy
 from .centralized import CentralizedStrategy
 from .hybrid import HybridStrategy
-from .federated import FederatedStrategy
 
 __all__ = [
     "ILearningStrategy",
     "CentralizedStrategy",
     "HybridStrategy",
-    "FederatedStrategy"
 ]
 
 
@@ -54,10 +54,8 @@ class StrategyFactory:
     _strategies = {
         "centralized": CentralizedStrategy,
         "hybrid": HybridStrategy,
-        "federated": FederatedStrategy,
         "a": CentralizedStrategy,
         "b": HybridStrategy,
-        "c": FederatedStrategy
     }
 
     @classmethod
@@ -66,8 +64,7 @@ class StrategyFactory:
         Create a strategy instance.
 
         Args:
-            strategy_type: One of "centralized", "hybrid", "federated"
-                          or "a", "b", "c"
+            strategy_type: One of "centralized", "hybrid" or "a", "b"
             **kwargs: Arguments passed to strategy constructor
 
         Returns:

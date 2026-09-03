@@ -17,27 +17,20 @@ Strategy B (Hybrid):
     - Broadcasts updated model
 
 Strategy C (Federated):
-    - Runs Flower FL server
     - Receives model weights from clients
-    - Performs FedAvg aggregation
+    - Performs FedAvg aggregation (hand-rolled, over MQTT)
     - Broadcasts global model
 
 Submodules:
-    - flower_server: Flower FL server (Strategy C)
-    - training: Centralized training (Strategy A/B)
-    - aggregation: FedAvg and other aggregation methods
-    - api: MQTT message handling
+    - training: model definitions (audio_cnn, fusion_model)
+    - aggregation: FedAvg weight averaging (Strategy C)
+    - api: reserved
 
-Usage:
-    # Start Flower server
-    python -m src.server.flower_server
-
-    # Start centralized training server
-    python -m src.server.main --strategy centralized
+The actual server entry points live in src/experiments/strategy_{a,b,c}_server.py
+and are spawned by scripts/run_strategy.py — see docs/CODE_FLOW.md.
 """
 
-# Submodules are NOT eagerly imported — Flower / TF dependencies should only
-# load when the user actually reaches for those features. Import explicitly:
-#     from src.server.flower_server import FlowerServer
-#     from src.server.main import Server
+# Submodules are NOT eagerly imported — TF should only load when the user
+# actually reaches for those features. Import explicitly, e.g.:
+#     from src.server.aggregation.fedavg import FedAvgAggregator
 __all__ = []

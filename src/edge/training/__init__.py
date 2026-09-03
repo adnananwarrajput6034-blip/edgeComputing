@@ -17,11 +17,9 @@ Solutions implemented:
 4. Training scheduling (avoid peak usage times)
 
 Classes:
-    LocalTrainer: Manages local model training
     LocalDataset: Handles local data buffering
 """
 
-from .local_trainer import LocalTrainer
 from .dataset import LocalDataset
 
-__all__ = ["LocalTrainer", "LocalDataset"]
+__all__ = ["LocalDataset"]

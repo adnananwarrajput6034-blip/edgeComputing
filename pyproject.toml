@@ -34,14 +34,15 @@ edge = [
     "librosa>=0.10.0",
     "sounddevice>=0.4.6",
     "ultralytics>=8.0.0",
-    "flwr>=1.0.0",
+    "opencv-python-headless>=4.8.0",
 ]
 server = [
     "tensorflow>=2.10.0",
-    "flwr>=1.0.0",
     "librosa>=0.10.0",
     "matplotlib>=3.7.0",
 ]
+# Note: the project uses hand-rolled FedAvg over MQTT, not Flower.
+# `pip install flwr` manually only if you ever pursue the Flower path.
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -50,10 +51,11 @@ dev = [
     "mypy>=1.0.0",
 ]
 
-[project.scripts]
-thesis-edge = "src.edge.main:main"
-thesis-server = "src.server.main:main"
-thesis-flower = "src.server.flower_server:main"
+[tool.setuptools]
+# Dependency-only project: code runs from the repo root via
+# `python -m src.experiments...` (repo root on sys.path), so there is no
+# package to build/install — `pip install -e .` installs only dependencies.
+py-modules = []
 
 [tool.black]
 line-length = 88

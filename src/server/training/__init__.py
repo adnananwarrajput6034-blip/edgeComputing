@@ -11,7 +11,6 @@ In centralized training:
 4. Model is updated and broadcast to edge nodes
 
 Classes:
-    CentralizedTrainer: Main training orchestrator
     DataReceiver: Handles incoming data from edges
     ModelBroadcaster: Sends updated model to edges
 
@@ -19,6 +18,5 @@ Submodules:
     models/: Neural network architectures
 """
 
-from .centralized_trainer import CentralizedTrainer
 
-__all__ = ["CentralizedTrainer"]
+__all__ = []

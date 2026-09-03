@@ -134,11 +134,14 @@ class CentralizedStrategy(ILearningStrategy):
 
             # Upload via MQTT
             if self.mqtt_client:
-                self.mqtt_client.publish(
+                ok = self.mqtt_client.publish(
                     topic=self.mqtt_topic_data,
                     payload=payload,
                     qos=1  # At least once delivery
                 )
+                if not ok:
+                    self.logger.error("MQTT publish failed - not counting upload")
+                    return False
             else:
                 # Mock upload for development
                 self.logger.warning("No MQTT client - mock upload")

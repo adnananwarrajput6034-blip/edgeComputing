@@ -1,43 +1,32 @@
 """
-Strategy A Harness Runner
-=========================
+Strategy Harness Runner (generalized over A/B)
+==============================================
 
 Spawns 1 server + 2 client subprocesses that communicate over a real MQTT
-broker (mosquitto on localhost:1883) and stream UrbanSound8K samples for
-Strategy A (Centralized) comparison.
+broker (mosquitto on localhost:1883) and stream UrbanSound8K samples for a
+chosen strategy. Generalizes run_strategy_a.py with a --strategy flag:
 
-Prerequisites:
-    - mosquitto broker running locally (`brew services start mosquitto`
-      or run `mosquitto -v` in another terminal).
-    - paho-mqtt installed in .venv.
-    - UrbanSound8K downloaded to data/urbansound8k/UrbanSound8K/.
-    - data/urbansound8k/cache.npz present (produced by prepare_urbansound8k.py).
+    --strategy a  → src.experiments.strategy_a_{server,client}  (centralized,
+                    raw audio, server-side STFT)
+    --strategy b  → src.experiments.strategy_b_{server,client}  (hybrid,
+                    edge-side STFT, spectrograms on the wire)
+
+Both write the same server.json / client_*.json schema, into
+results/strategy_{a,b,c}/run_{timestamp}/ — so results sit side by side
+for the A-vs-B-vs-C comparison.
+
+Prerequisites: mosquitto running (configs/mosquitto.conf), venv, and
+data/urbansound8k/cache.npz.
 
 Usage:
-    # Smoke test — ~5 min wall time
-    .venv/bin/python scripts/run_strategy_a.py \\
-        --max-samples 100 \\
-        --stream-rate-ms 100 \\
-        --num-rounds 2 \\
-        --buffer-size 50 \\
-        --train-trigger-samples 100
+    # smoke test (~1 min)
+    .venv/bin/python scripts/run_strategy.py --strategy b \\
+        --max-samples 100 --stream-rate-ms 100 --num-rounds 2 \\
+        --buffer-size 50 --train-trigger-samples 100
 
-    # Real run — ~30-45 min wall time
-    .venv/bin/python scripts/run_strategy_a.py \\
-        --max-samples 5000 \\
-        --stream-rate-ms 500 \\
-        --num-rounds 10 \\
-        --buffer-size 500 \\
-        --train-trigger-samples 1000
-
-Outputs:
-    experiments/strategy_a/{timestamp}/
-        client_A.json          — client A metrics
-        client_B.json          — client B metrics
-        server.json            — server round-by-round metrics
-        server.log             — server stdout/stderr
-        client_A.log           — client A stdout/stderr
-        client_B.log           — client B stdout/stderr
+    # real run (~40 min)
+    .venv/bin/python scripts/run_strategy.py --strategy b \\
+        --max-samples 5000 --num-rounds 10
 """
 
 from __future__ import annotations
@@ -56,6 +45,12 @@ VENV_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--strategy", choices=["a", "b", "c", "fb", "fc"],
+                   required=True,
+                   help="a=centralized (raw audio), b=hybrid (spectrograms), "
+                        "c=federated (FedAvg) — audio model; "
+                        "fb/fc = same with the FUSION model (F6: paired "
+                        "VGGSound data, edge ships/keeps the vision FV)")
     p.add_argument("--broker", default="localhost")
     p.add_argument("--port", type=int, default=1883)
     p.add_argument("--max-samples", type=int, default=5000,
@@ -69,6 +64,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--train-trigger-samples", type=int, default=1000,
                    help="Server-side buffer size that triggers a training round")
     p.add_argument("--epochs-per-round", type=int, default=1)
+    p.add_argument("--local-lr", type=float, default=1e-3,
+                   help="Strategy C only: local learning rate for FedAvg clients")
     p.add_argument("--server-ready-timeout", type=float, default=60.0,
                    help="Max seconds to wait for server to subscribe before starting clients")
     p.add_argument("--client-timeout", type=float, default=None,
@@ -101,6 +98,8 @@ def spawn(name: str, cmd: list, log_path: Path) -> subprocess.Popen:
 
 def main() -> int:
     args = parse_args()
+    server_module = f"src.experiments.strategy_{args.strategy}_server"
+    client_module = f"src.experiments.strategy_{args.strategy}_client"
 
     # Preflight
     if not VENV_PYTHON.exists():
@@ -120,9 +119,9 @@ def main() -> int:
 
     # Run directory
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = REPO_ROOT / "experiments" / "strategy_a" / f"run_{ts}"
+    run_dir = REPO_ROOT / "results" / f"strategy_{args.strategy}" / f"run_{ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Run directory: {run_dir}")
+    print(f"Strategy {args.strategy.upper()} — run directory: {run_dir}")
 
     # Write the invocation for reproducibility
     with open(run_dir / "invocation.txt", "w") as f:
@@ -134,7 +133,7 @@ def main() -> int:
     # 1) Server first (so it's subscribed before clients start publishing)
     print("\nStarting server...")
     server_cmd = [
-        str(VENV_PYTHON), "-m", "src.experiments.strategy_a_server",
+        str(VENV_PYTHON), "-m", server_module,
         "--broker", args.broker,
         "--port", str(args.port),
         "--num-rounds", str(args.num_rounds),
@@ -142,6 +141,8 @@ def main() -> int:
         "--epochs-per-round", str(args.epochs_per_round),
         "--run-dir", str(run_dir),
     ]
+    if args.strategy in ("c", "fc"):
+        server_cmd += ["--local-lr", str(args.local_lr)]  # A/B servers don't accept it
     server_proc = spawn("server", server_cmd, run_dir / "server.log")
 
     # Wait for server to actually subscribe to the data topic before starting
@@ -177,7 +178,7 @@ def main() -> int:
     client_procs = []
     for node_id in ["A", "B"]:
         cmd = [
-            str(VENV_PYTHON), "-m", "src.experiments.strategy_a_client",
+            str(VENV_PYTHON), "-m", client_module,
             "--node-id", node_id,
             "--broker", args.broker,
             "--port", str(args.port),
@@ -204,10 +205,13 @@ def main() -> int:
     if server_proc.poll() is None:
         print("  sending SIGTERM to server")
         server_proc.terminate()
+        # Grace period must cover a full training round: if the last client
+        # batch tips the pool over the final trigger, the server is inside
+        # model.fit() when SIGTERM lands and needs ~30-60s to finish it.
         try:
-            server_proc.wait(timeout=15.0)
+            server_proc.wait(timeout=120.0)
         except subprocess.TimeoutExpired:
-            print("  server didn't exit in 15s, killing")
+            print("  server didn't exit in 120s, killing")
             server_proc.kill()
             server_proc.wait()
 

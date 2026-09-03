@@ -15,10 +15,8 @@ MQTT Topics:
 
 Classes:
     MQTTClient: MQTT publish/subscribe wrapper
-    FlowerClient: Flower FL client wrapper
 """
 
 from .mqtt_client import MQTTClient
-from .flower_client import FlowerClient
 
-__all__ = ["MQTTClient", "FlowerClient"]
+__all__ = ["MQTTClient"]

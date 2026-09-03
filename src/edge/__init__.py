@@ -18,6 +18,5 @@ Usage:
     python -m src.edge.main --node-id A --server-ip 192.168.1.100
 """
 
-from .main import EdgeNode
 
-__all__ = ["EdgeNode"]
+__all__ = []

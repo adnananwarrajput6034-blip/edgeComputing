@@ -157,6 +157,84 @@ def FusionModelWithModalityDropout(
     return FusionModel(num_classes=num_classes, **kwargs)
 
 
+def FVFusionModel(
+    num_classes: int = 10,
+    fv_dim: int = 576,
+    audio_feature_dim: int = 128,
+    vision_feature_dim: int = 256,
+    dropout_rate: float = 0.3,
+):
+    """
+    Fusion model whose vision input is the FROZEN backbone's feature vector
+    instead of the raw image (F6 wire format: the edge runs MobileNetV3 and
+    ships its 576-float pooled output — frames never leave the device).
+
+    Identical to FusionModel from the vision_projection onward; all trained
+    weights (vision_projection, audio branch, fusion head) transfer 1:1 from
+    a trained FusionModel — only the frozen backbone moves to the edge.
+    """
+    if not TF_AVAILABLE:
+        raise RuntimeError("TensorFlow not available")
+
+    fv_input = layers.Input(shape=(fv_dim,), name='vision_fv_input')
+    vision_features = layers.Dense(
+        vision_feature_dim, activation='relu',
+        name='vision_projection')(fv_input)
+
+    audio_input = layers.Input(shape=(51, 128, 1), name='audio_input')
+    x = layers.Conv2D(32, (3, 3), padding='same')(audio_input)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(64, (3, 3), padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(128, (3, 3), padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    audio_features = layers.GlobalAveragePooling2D()(x)
+    audio_features = layers.Dense(
+        audio_feature_dim, activation='relu',
+        name='audio_projection')(audio_features)
+
+    fused = layers.Concatenate(name='fusion_concat')(
+        [vision_features, audio_features])
+    x = layers.Dense(256, activation='relu', name='fusion_dense1')(fused)
+    x = layers.Dropout(dropout_rate)(x)
+    x = layers.Dense(128, activation='relu', name='fusion_dense2')(x)
+    x = layers.Dropout(dropout_rate)(x)
+    output = layers.Dense(num_classes, activation='softmax', name='output')(x)
+
+    return Model(inputs=[fv_input, audio_input], outputs=output,
+                 name='fv_fusion_model')
+
+
+def transfer_fusion_weights(image_fusion, fv_fusion) -> int:
+    """
+    Copy every trainable layer's weights from a trained image-input
+    FusionModel into an FVFusionModel (backbone excluded — it lives on the
+    edge). Matches by layer name where names exist (projections, head,
+    output) and by order for the unnamed audio conv/BN stack. Returns the
+    number of layers transferred.
+    """
+    named = ['vision_projection', 'audio_projection',
+             'fusion_dense1', 'fusion_dense2', 'output']
+    n = 0
+    for name in named:
+        fv_fusion.get_layer(name).set_weights(
+            image_fusion.get_layer(name).get_weights())
+        n += 1
+    conv_bn = (layers.Conv2D, layers.BatchNormalization)
+    src_stack = [l for l in image_fusion.layers if isinstance(l, conv_bn)]
+    dst_stack = [l for l in fv_fusion.layers if isinstance(l, conv_bn)]
+    for src, dst in zip(src_stack, dst_stack):
+        dst.set_weights(src.get_weights())
+        n += 1
+    return n
+
+
 def AudioOnlyModel(num_classes: int = 10, dropout_rate: float = 0.3):
     """
     Audio-only model for comparison experiments.

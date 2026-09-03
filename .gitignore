@@ -86,7 +86,8 @@ models/*.pt
 # trained Keras models — reproducible via training scripts
 models/*.keras
 models/checkpoints/
-experiments/
+# experiment run outputs (root-level only; src/experiments/ is code and stays tracked)
+/results/
 # numpy archive caches — reproducible
 *.npz
 *.csv
@@ -114,3 +115,12 @@ tensorboard_logs/
 *.mp4
 *.wav
 *.mp3
+.claude/
+*.egg-info/
+data/vggsound/
+
+# raw sensor dumps pulled off the Pi edge node — regenerable via scripts/pull_from_pi.sh
+data/pi_captures/images/
+data/pi_captures/audio/
+data/pi_captures/evidence/
+data/pi_captures/results/
