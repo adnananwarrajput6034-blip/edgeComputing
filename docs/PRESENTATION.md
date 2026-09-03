@@ -203,6 +203,46 @@ for b in r.boxes: print('  ', m.names[int(b.cls)], f'{float(b.conf):.2f}')
 This is the thesis's core claim running literally: **vision supervises
 audio**. No human labels anything.
 
+### FIRST: aim and verify the camera (2 min, saves the whole act)
+
+Enrollment failed four times in rehearsal for reasons that were all
+physical, never software. Do these two checks before typing the enroll
+command.
+
+**1. Aim it, and check focus.** On the **laptop**:
+
+```bash
+./scripts/pi_focus_check.sh -t 5
+```
+
+- The camera must point **horizontally at the desk** where objects will be
+  held — pointed up at a ceiling it sees a blank wall, and YOLO will label
+  that wall `refrigerator` or `toilet` at ~0.5 all day.
+- **Sharpness must read above 20.** A reading near 3 means the lens is
+  obstructed or knocked, and nothing will be detected.
+
+**2. Check the objects are actually seen.** Still on the **laptop**:
+
+```bash
+./scripts/pi_detect_check.sh
+```
+
+Hold each object up and read the first label on each line. Keep only those
+printing `GOOD` (confidence >= 0.70). An object detected on 1 tick in 10
+can never reach `--min-samples`, and enrollment will refuse to save after
+three minutes of your time.
+
+**Distance matters and is counter-intuitive**: the webcam is *fixed-focus*
+at roughly 0.5-1 m. Holding an object close to the lens makes it blurrier,
+not clearer. Use **arm's length**.
+
+**What is proven to work on this hardware**: a phone playing a video, held
+at arm's length with the screen filling much of the frame. That produced
+`car` 40 samples and `cell phone` 33. Transparent or reflective objects
+(glass, cup) score poorly and should be avoided.
+
+### THEN enroll
+
 **Terminal 3 (on the Pi):**
 
 ```bash
@@ -234,8 +274,20 @@ Live readout, one line updating in place:
 ```
 
 **Ask the examiner to hold up an object and make its sound.** Keyboard →
-type. Scissors → snip. Phone → ring it. Roughly 40 seconds per class at one
-sample/second. Stop with **Ctrl-C** when each class shows ≥30.
+type. Scissors → snip. Phone → ring it. Roughly 60 seconds per class.
+
+**Watch the counter, not the clock.** The number after the `|` is what
+decides whether this works:
+
+```
+[enroll] tick 47: keyboard (0.71)  |  keyboard:31  bottle:12
+                                      ^^^^^^^^^^^  ^^^^^^^^^
+                                      done         keep going
+```
+
+Do not press Ctrl-C until **at least two classes show 30 or more**. Stopping
+early writes nothing at all — the script refuses to build a vocabulary it
+cannot train on, and three minutes are lost.
 
 Expected summary:
 
@@ -656,7 +708,10 @@ it there rather than here, where provenance is the question being asked.
 | `cannot reach broker` | Wrong `<LAPTOP_IP>`, or broker not running | Re-run `ipconfig getifaddr en0`; restart mosquitto |
 | Pi client hangs at *waiting for global model* | Server not started, or `--num-clients 2` with one Pi | Start the C server with `--num-clients 1` |
 | Enrollment: `need >=2 classes` | Only one object recognised | Enroll longer, add an object, or lower `--min-samples` |
-| Enrollment detects nothing | Object not in COCO's 80 classes, or out of focus | Try `--confidence 0.3`; fall back to a keyboard or phone |
+| Enrollment detects nothing | Camera aimed at a wall, or lens blurred | `pi_focus_check.sh` (want >20), then `pi_detect_check.sh` (want GOOD) |
+| Enrollment saves nothing | Stopped before a class reached `--min-samples` | Watch the counter after the `\|`, not the clock |
+| Labels scattered over many classes | Objects too weak/small; `--confidence` too low | Raise to 0.5, hold objects at arm's length, verify with `pi_detect_check.sh` |
+| Every class becomes `person` | You are in frame outscoring the object | `--ignore person` |
 | `no such device` on the mic | Card renumbered after reboot | `arecord -l`, then adjust `--audio-device` |
 | Blurry frames | Lens film / focus | `./scripts/pi_focus_check.sh`; sharpness should exceed ~20 |
 | Server trains on 0 samples | `skipped_unknown_labels` climbing | Client and server are using different datasets — both must point at the same enrolled file |
